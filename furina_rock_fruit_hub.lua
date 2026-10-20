@@ -1509,58 +1509,61 @@ local function farmMobTarget(mobName)
         return
     end
     
-    -- 3. Alive mobs exist! Pick first genuinely alive mob
-    local targetMob, targetHRP, targetHum
-    for _, m in ipairs(aliveMobs) do
-        local hum = m:FindFirstChildOfClass("Humanoid")
-        local root = m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("Torso")
-        if hum and hum.Health > 0 and root then
-            targetMob = m
-            targetHum = hum
-            targetHRP = root
-            break
-        end
-    end
-    if not targetMob or not targetHRP or not targetHum then return end
-    
-    -- Position player according to Farm Mode: Sky or Ground
-    local attackCF
+    -- 3. Multi-Target Rapid Sweep & Mob Magnet Engine
     local isSky = (Config.FarmPosition == "Sky (Above)" or Config.KillInSky)
-    if isSky then
-        local skyHeight = Config.SkyHeight or 5.8
-        local skyPos = targetHRP.Position + Vector3.new(0, skyHeight, 0)
-        attackCF = CFrame.lookAt(skyPos, targetHRP.Position)
-    elseif Config.FarmPosition == "Behind" then
-        attackCF = targetHRP.CFrame * CFrame.new(0, 0, -2.5) * CFrame.Angles(0, math.rad(180), 0)
-    elseif Config.FarmPosition == "Underground" then
-        attackCF = CFrame.new(targetHRP.Position - Vector3.new(0, 5, 0)) * CFrame.Angles(math.rad(90), 0, 0)
-    else -- Ground (Front)
-        attackCF = targetHRP.CFrame * CFrame.new(0, 0, 2.5)
-    end
-    teleportInstant(attackCF)
-    
-    -- Hover stability lock in sky
-    if isSky and hrp then
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end
-    
-    -- 4. MOB MAGNET: Stack all other matching alive mobs directly onto target mob
-    if Config.MobMagnet then
-        for i = 2, #aliveMobs do
-            local m = aliveMobs[i]
-            local mhrp = m:FindFirstChild("HumanoidRootPart") or m:FindFirstChild("Torso")
-            if mhrp then
-                mhrp.CFrame = targetHRP.CFrame
-                mhrp.AssemblyLinearVelocity = Vector3.zero
-                mhrp.AssemblyAngularVelocity = Vector3.zero
-                mhrp.CanCollide = false
+    for _, targetMob in ipairs(aliveMobs) do
+        local targetHum = targetMob:FindFirstChildOfClass("Humanoid")
+        local targetHRP = targetMob:FindFirstChild("HumanoidRootPart") or targetMob:FindFirstChild("Torso")
+        if targetHum and targetHum.Health > 0 and targetHRP then
+            -- Position directly above this target mob
+            local attackCF
+            if isSky then
+                local skyHeight = Config.SkyHeight or 5.8
+                local skyPos = targetHRP.Position + Vector3.new(0, skyHeight, 0)
+                attackCF = CFrame.lookAt(skyPos, targetHRP.Position)
+            elseif Config.FarmPosition == "Behind" then
+                attackCF = targetHRP.CFrame * CFrame.new(0, 0, -2.5) * CFrame.Angles(0, math.rad(180), 0)
+            elseif Config.FarmPosition == "Underground" then
+                attackCF = CFrame.new(targetHRP.Position - Vector3.new(0, 5, 0)) * CFrame.Angles(math.rad(90), 0, 0)
+            else
+                attackCF = targetHRP.CFrame * CFrame.new(0, 0, 2.5)
+            end
+            teleportInstant(attackCF)
+            
+            -- Hover stability lock in sky
+            if isSky and hrp then
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end
+            
+            -- MOB MAGNET: Pull all other matching alive mobs directly to this target with complete collision disabling
+            if Config.MobMagnet then
+                for _, otherMob in ipairs(aliveMobs) do
+                    if otherMob ~= targetMob then
+                        local oHRP = otherMob:FindFirstChild("HumanoidRootPart") or otherMob:FindFirstChild("Torso")
+                        local oHum = otherMob:FindFirstChildOfClass("Humanoid")
+                        if oHRP and oHum and oHum.Health > 0 then
+                            for _, part in ipairs(otherMob:GetDescendants()) do
+                                if part:IsA("BasePart") then
+                                    part.CanCollide = false
+                                end
+                            end
+                            oHRP.CFrame = targetHRP.CFrame
+                            oHRP.AssemblyLinearVelocity = Vector3.zero
+                            oHRP.AssemblyAngularVelocity = Vector3.zero
+                        end
+                    end
+                end
+            end
+            
+            -- Attack target mob!
+            performAttack()
+            
+            if #aliveMobs > 1 then
+                task.wait(0.03)
             end
         end
     end
-    
-    -- 5. Attack!
-    performAttack()
 end
 
 -- ==========================================
